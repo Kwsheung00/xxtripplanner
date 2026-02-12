@@ -47,6 +47,16 @@
                         <div class="h-8 w-8 rounded-full bg-gray-200 overflow-hidden border border-gray-300">
                             <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="User" />
                         </div>
+                        <div class="flex gap-2">
+                            <button @click="shareTrip" class="px-3 py-1 bg-brand-100 text-brand-700 hover:bg-brand-200 rounded-full text-sm font-medium flex items-center gap-1">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
+                                Share Trip
+                            </button>
+     
+                            <span class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                                Budget: ${{ activeTripBudget }}
+                            </span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -260,132 +270,207 @@
         </main>
     </div>
 
-    <script>
-        const { createApp } = Vue;
+    <script type="module">
+    // 1. Import Vue and Firebase from CDNs
+    import { createApp, ref, reactive, computed, onMounted, watch } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, doc, getDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-        createApp({
-            data() {
-                return {
-                    currentView: 'dashboard',
-                    activeTab: 'Schedule',
-                    activeTrip: null,
-                    
-                    // New Expense Form Data
-                    newExpense: { desc: '', amount: '', payer: '' },
-                    newItem: '',
+    // Firebase configuration
+    const firebaseConfig = {
+    apiKey: "AIzaSyCncLyF2NlitEyz3QJ4qBMQAfAZXAH9GJo",
+    authDomain: "trip-planner-52351.firebaseapp.com",
+    projectId: "trip-planner-52351",
+    storageBucket: "trip-planner-52351.firebasestorage.app",
+    messagingSenderId: "11881619143",
+    appId: "1:11881619143:web:1f69ee5ff1573eab9f68e2",
+    measurementId: "G-Q28K2KS7B1"
+    }
 
-                    // Mock Data
-                    trips: [
-                        {
-                            id: 1,
-                            destination: 'Tokyo, Japan',
-                            date: 'Apr 10 - Apr 20, 2024',
-                            image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?q=80&w=1000&auto=format&fit=crop',
-                            friends: ['Alice', 'Bob', 'Felix'],
-                            expenses: [
-                                { desc: 'Flight Tickets', amount: 1200, payer: 'Felix' },
-                                { desc: 'Airbnb Deposit', amount: 400, payer: 'Alice' }
-                            ],
-                            shoppingList: [
-                                { text: 'Power Adapter', checked: false },
-                                { text: 'Japan Rail Pass', checked: true }
-                            ],
-                            days: [
-                                { 
-                                    activities: [
-                                        { time: '10:00 AM', title: 'Arrive at Narita', location: 'Airport' },
-                                        { time: '02:00 PM', title: 'Check-in', location: 'Shinjuku Hotel' },
-                                        { time: '06:00 PM', title: 'Dinner at Omoide Yokocho', location: 'Shinjuku' }
-                                    ] 
-                                },
-                                { 
-                                    activities: [
-                                        { time: '09:00 AM', title: 'Visit Senso-ji', location: 'Asakusa' }
-                                    ] 
-                                }
-                            ]
-                        },
-                        {
-                            id: 2,
-                            destination: 'Paris, France',
-                            date: 'Jun 15 - Jun 22, 2024',
-                            image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?q=80&w=1000&auto=format&fit=crop',
-                            friends: ['Felix', 'Sarah'],
-                            expenses: [],
-                            shoppingList: [],
-                            days: [ { activities: [] }, { activities: [] } ]
-                        }
-                    ]
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    createApp({
+        setup() {
+            // State
+            const currentView = ref('dashboard');
+            const activeTab = ref('Schedule');
+            const trips = ref([]); // Now empty, will load from Cloud
+            const activeTrip = ref(null);
+            
+            // Forms
+            const newExpense = reactive({ desc: '', amount: '', payer: '' });
+            const newItem = ref('');
+
+            // --- COMPUTED PROPERTIES ---
+            const upcomingTripsCount = computed(() => trips.value.length);
+            
+            const totalGlobalBudget = computed(() => {
+                return trips.value.reduce((acc, trip) => {
+                    return acc + (trip.expenses || []).reduce((sum, e) => sum + e.amount, 0);
+                }, 0);
+            });
+
+            const activeTripBudget = computed(() => {
+                if(!activeTrip.value || !activeTrip.value.expenses) return 0;
+                return activeTrip.value.expenses.reduce((sum, e) => sum + e.amount, 0);
+            });
+
+            const splitAmount = computed(() => {
+                if(!activeTrip.value || !activeTrip.value.friends || activeTrip.value.friends.length === 0) return 0;
+                return (activeTripBudget.value / activeTrip.value.friends.length).toFixed(2);
+            });
+
+            // --- DATABASE FUNCTIONS ---
+
+            // 1. Load all trips (Real-time Listener)
+            const loadTrips = () => {
+                // Listens for updates. If a friend changes data, this runs automatically.
+                onSnapshot(collection(db, "trips"), (snapshot) => {
+                    trips.value = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+                });
+            };
+
+            // 2. Create a New Trip
+            const createTrip = async () => {
+                const dest = prompt("Where are you going?");
+                if (!dest) return;
+
+                const newTrip = {
+                    destination: dest,
+                    date: 'Upcoming',
+                    image: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?q=80&w=1000&auto=format&fit=crop',
+                    friends: ['You'],
+                    expenses: [],
+                    shoppingList: [],
+                    days: [{ activities: [] }]
+                };
+
+                // Save to Cloud
+                try {
+                    const docRef = await addDoc(collection(db, "trips"), newTrip);
+                    alert("Trip created! ID: " + docRef.id);
+                } catch (e) {
+                    console.error("Error adding trip: ", e);
+                    alert("Error saving to database. Check your API Keys.");
                 }
-            },
-            computed: {
-                upcomingTripsCount() {
-                    return this.trips.length;
-                },
-                totalGlobalBudget() {
-                    return this.trips.reduce((acc, trip) => {
-                        return acc + trip.expenses.reduce((sum, e) => sum + e.amount, 0);
-                    }, 0);
-                },
-                activeTripBudget() {
-                    if(!this.activeTrip) return 0;
-                    return this.activeTrip.expenses.reduce((sum, e) => sum + e.amount, 0);
-                },
-                splitAmount() {
-                    if(!this.activeTrip || this.activeTrip.friends.length === 0) return 0;
-                    return (this.activeTripBudget / this.activeTrip.friends.length).toFixed(2);
+            };
+
+            // 3. Save Changes (Updates the entire trip object)
+            // In a real app, you'd update specific fields, but this is easier for now.
+            const saveActiveTrip = async () => {
+                if (!activeTrip.value) return;
+                const tripRef = doc(db, "trips", activeTrip.value.id);
+                await updateDoc(tripRef, { ...activeTrip.value });
+            };
+
+            // 4. Share Feature
+            const shareTrip = () => {
+                if (!activeTrip.value) return;
+                const url = window.location.origin + window.location.pathname + "?trip_id=" + activeTrip.value.id;
+                navigator.clipboard.writeText(url);
+                alert("Link copied! Send this to your friends:\n" + url);
+            };
+
+            // --- APP LOGIC ---
+
+            const selectTrip = (trip) => {
+                activeTrip.value = trip;
+                currentView.value = 'details';
+                activeTab.value = 'Schedule';
+                if(trip.friends.length > 0) newExpense.payer = trip.friends[0];
+            };
+
+            // Watch for changes in the active trip and auto-save to cloud
+            // This is "Auto-Save" mode
+            watch(activeTrip, (newVal) => {
+                if(newVal) {
+                    // Debounce could be added here to prevent too many writes
+                    saveActiveTrip(); 
                 }
-            },
-            methods: {
-                selectTrip(trip) {
-                    this.activeTrip = trip;
-                    this.currentView = 'details';
-                    this.activeTab = 'Schedule'; // Reset tab
-                    // Set default payer
-                    if(trip.friends.length > 0) this.newExpense.payer = trip.friends[0];
-                },
-                openNewTripModal() {
-                    alert("This feature would open a modal to create a new trip object!");
-                },
-                // Expense Logic
-                addExpense() {
-                    if(!this.newExpense.desc || !this.newExpense.amount) return;
-                    this.activeTrip.expenses.push({
-                        desc: this.newExpense.desc,
-                        amount: parseFloat(this.newExpense.amount),
-                        payer: this.newExpense.payer
+            }, { deep: true });
+
+
+            // Helper: Add Expense
+            const addExpense = () => {
+                if(!newExpense.desc || !newExpense.amount) return;
+                if(!activeTrip.value.expenses) activeTrip.value.expenses = [];
+                
+                activeTrip.value.expenses.push({
+                    desc: newExpense.desc,
+                    amount: parseFloat(newExpense.amount),
+                    payer: newExpense.payer
+                });
+                newExpense.desc = ''; newExpense.amount = '';
+            };
+
+            const removeExpense = (index) => {
+                activeTrip.value.expenses.splice(index, 1);
+            };
+
+            // Helper: Shopping List
+            const addItem = () => {
+                if(!newItem.value) return;
+                if(!activeTrip.value.shoppingList) activeTrip.value.shoppingList = [];
+                activeTrip.value.shoppingList.push({ text: newItem.value, checked: false });
+                newItem.value = '';
+            };
+
+            const removeItem = (index) => {
+                activeTrip.value.shoppingList.splice(index, 1);
+            };
+
+            // Helper: Schedule
+            const addActivity = (dayIndex) => {
+                const title = prompt("Activity Title:");
+                if(title) {
+                    activeTrip.value.days[dayIndex].activities.push({
+                        time: '12:00 PM', title: title, location: 'TBD'
                     });
-                    this.newExpense.desc = '';
-                    this.newExpense.amount = '';
-                },
-                removeExpense(index) {
-                    this.activeTrip.expenses.splice(index, 1);
-                },
-                // Shopping List Logic
-                addItem() {
-                    if(!this.newItem) return;
-                    this.activeTrip.shoppingList.push({ text: this.newItem, checked: false });
-                    this.newItem = '';
-                },
-                removeItem(index) {
-                    this.activeTrip.shoppingList.splice(index, 1);
-                },
-                // Schedule Logic
-                addActivity(dayIndex) {
-                    const title = prompt("Activity Title:");
-                    if(title) {
-                        this.activeTrip.days[dayIndex].activities.push({
-                            time: '12:00 PM',
-                            title: title,
-                            location: 'TBD'
-                        });
-                    }
-                },
-                removeActivity(dayIndex, activityIndex) {
-                    this.activeTrip.days[dayIndex].activities.splice(activityIndex, 1);
                 }
-            }
-        }).mount('#app');
-    </script>
+            };
+
+            const removeActivity = (dayIndex, activityIndex) => {
+                activeTrip.value.days[dayIndex].activities.splice(activityIndex, 1);
+            };
+
+
+            // --- INITIALIZATION ---
+            onMounted(async () => {
+                loadTrips();
+
+                // Check if user opened a shared link (e.g., ?trip_id=XYZ)
+                const params = new URLSearchParams(window.location.search);
+                const sharedId = params.get('trip_id');
+                
+                if (sharedId) {
+                    // Wait for trips to load or fetch specific doc
+                    const docRef = doc(db, "trips", sharedId);
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) {
+                        activeTrip.value = { id: docSnap.id, ...docSnap.data() };
+                        currentView.value = 'details';
+                    }
+                }
+            });
+
+            return {
+                currentView, activeTab, trips, activeTrip,
+                newExpense, newItem,
+                upcomingTripsCount, totalGlobalBudget, activeTripBudget, splitAmount,
+                selectTrip, createTrip, shareTrip,
+                addExpense, removeExpense, addItem, removeItem, addActivity, removeActivity
+            };
+        }
+    }).mount('#app');
+</script>
+
 </body>
 </html>
+
+
+  

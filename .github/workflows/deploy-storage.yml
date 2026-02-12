@@ -26,9 +26,9 @@ jobs:
           service_account: '${{ secrets.GCP_SA_EMAIL }}'
 
       # Upload files to GCS
-      - name: Upload to GCS
-        uses: google-github-actions/upload-cloud-storage@v2
-        with:
-          path: './build' # The folder you want to upload
-          destination: 'my-bucket-name'
-          parent: false # Optional: prevents creating the 'build' folder inside the bucket
+      #- name: Upload to GCS
+      #  uses: google-github-actions/upload-cloud-storage@v2
+      #  with:
+      #    path: './build' # The folder you want to upload
+      #    destination: 'my-bucket-name'
+      #    parent: false # Optional: prevents creating the 'build' folder inside the bucket
