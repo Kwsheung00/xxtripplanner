@@ -192,92 +192,92 @@
         </transition>
 
     </div>
+    
+<script>
+    const { createApp } = Vue
 
-    <script>
-        const { createApp } = Vue
-
-        createApp({
-            data() {
-                return {
-                    showModal: false,
-                    newTrip: {
-                        destination: '',
-                        start: '',
-                        end: '',
-                        image: '',
-                        notes: ''
-                    },
-                    trips: [
-                        {
-                            destination: 'Santorini, Greece',
-                            start: '2024-06-15',
-                            end: '2024-06-22',
-                            image: 'https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?q=80&w=2938&auto=format&fit=crop',
-                            notes: 'Stay at Oia Castle Hotel. Boat tour booked for Tuesday.'
-                        },
-                        {
-                            destination: 'Kyoto, Japan',
-                            start: '2024-11-10',
-                            end: '2024-11-20',
-                            image: 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=2940&auto=format&fit=crop',
-                            notes: 'Visit Fushimi Inari early in the morning. JR Pass activated.'
-                        },
-                        {
-                            destination: 'Reykjavik, Iceland',
-                            start: '2023-12-05',
-                            end: '2023-12-12',
-                            image: 'https://images.unsplash.com/photo-1520627581729-23efd671158a?q=80&w=2940&auto=format&fit=crop',
-                            notes: 'Northern lights tour confirmed. Pack thermal layers!'
-                        }
-                    ]
-                }
-            },
-            computed: {
-                upcomingCount() {
-                    return this.trips.filter(t => this.isUpcoming(t.start)).length;
-                }
-            },
-            methods: {
-                openModal() {
-                    this.showModal = true;
+    createApp({
+        data() {
+            return {
+                showModal: false,
+                newTrip: {
+                    destination: '',
+                    start: '',
+                    end: '',
+                    image: '',
+                    notes: ''
                 },
-                closeModal() {
-                    this.showModal = false;
-                    // Reset form
-                    this.newTrip = { destination: '', start: '', end: '', image: '', notes: '' };
-                },
-                addTrip() {
-                    // Simple validation
-                    if (!this.newTrip.destination || !this.newTrip.start) {
-                        alert('Please fill in at least the destination and start date.');
-                        return;
+                // Default data (will be overwritten if LocalStorage has data)
+                trips: [
+                    {
+                        destination: 'Santorini, Greece',
+                        start: '2024-06-15',
+                        end: '2024-06-22',
+                        image: 'https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?q=80&w=2938&auto=format&fit=crop',
+                        notes: 'Stay at Oia Castle Hotel. Boat tour booked for Tuesday.'
                     }
-
-                    // Use a random image if none provided
-                    const finalImage = this.newTrip.image || 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?q=80&w=2921&auto=format&fit=crop';
-
-                    this.trips.unshift({
-                        ...this.newTrip,
-                        image: finalImage
-                    });
-                    
-                    this.closeModal();
-                },
-                deleteTrip(index) {
-                    if(confirm("Are you sure you want to delete this trip?")) {
-                        this.trips.splice(index, 1);
-                    }
-                },
-                isUpcoming(dateString) {
-                    return new Date(dateString) >= new Date();
-                },
-                formatDate(dateString) {
-                    if (!dateString) return '';
-                    const options = { month: 'short', day: 'numeric', year: 'numeric' };
-                    return new Date(dateString).toLocaleDateString('en-US', options);
-                }
+                ]
             }
-        }).mount('#app')
-    </script>
+        },
+        // 1. LOAD DATA ON STARTUP
+        mounted() {
+            const savedTrips = localStorage.getItem('myTrips');
+            if (savedTrips) {
+                this.trips = JSON.parse(savedTrips);
+            }
+        },
+        // 2. WATCH FOR CHANGES & SAVE AUTOMATICALLY
+        watch: {
+            trips: {
+                handler(newTrips) {
+                    localStorage.setItem('myTrips', JSON.stringify(newTrips));
+                },
+                deep: true // This ensures we detect changes even inside objects
+            }
+        },
+        computed: {
+            upcomingCount() {
+                // Filter out invalid dates or empty trips first
+                return this.trips.filter(t => t.start && this.isUpcoming(t.start)).length;
+            }
+        },
+        methods: {
+            openModal() {
+                this.showModal = true;
+            },
+            closeModal() {
+                this.showModal = false;
+                this.newTrip = { destination: '', start: '', end: '', image: '', notes: '' };
+            },
+            addTrip() {
+                if (!this.newTrip.destination || !this.newTrip.start) {
+                    alert('Please fill in at least the destination and start date.');
+                    return;
+                }
+                const finalImage = this.newTrip.image || 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?q=80&w=2921&auto=format&fit=crop';
+                
+                // Add to start of array
+                this.trips.unshift({ ...this.newTrip, image: finalImage });
+                this.closeModal();
+            },
+            deleteTrip(index) {
+                if(confirm("Are you sure you want to delete this trip?")) {
+                    this.trips.splice(index, 1);
+                }
+            },
+            isUpcoming(dateString) {
+                const today = new Date();
+                today.setHours(0,0,0,0); // Ignore time part
+                return new Date(dateString) >= today;
+            },
+            formatDate(dateString) {
+                if (!dateString) return '';
+                const options = { month: 'short', day: 'numeric', year: 'numeric' };
+                return new Date(dateString).toLocaleDateString('en-US', options);
+            }
+        }
+    }).mount('#app')
+</script>
+
 </body>
 </html>
