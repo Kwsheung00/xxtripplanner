@@ -3,11 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trip Planner</title>
+    <title>Trip Planner App</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDfFDl16ggevb-IYU1pYD48kHUMC6701Ek&libraries=places&loading=async" async defer></script>
 
     <script>
         tailwind.config = {
@@ -15,7 +17,27 @@
                 extend: {
                     fontFamily: { sans: ['Inter', 'sans-serif'] },
                     colors: {
-                        brand: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 900: '#1e3a8a' }
+                        brand: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 900: '#1e3a8a' },
+                    },
+                    boxShadow: {
+                        'soft': '0 4px 20px -2px rgba(0, 0, 0, 0.05)',
+                        'float': '0 10px 40px -10px rgba(0, 0, 0, 0.15)'
+                    },
+                    animation: {
+                        'spin-slow': 'spin 8s linear infinite',
+                        'float': 'float 6s ease-in-out infinite',
+                        'rain': 'rain 0.5s linear infinite',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateX(0)' },
+                            '50%': { transform: 'translateX(20px)' },
+                        },
+                        rain: {
+                            '0%': { transform: 'translateY(-10px)', opacity: '0' },
+                            '50%': { opacity: '1' },
+                            '100%': { transform: 'translateY(20px)', opacity: '0' },
+                        }
                     }
                 }
             }
@@ -23,147 +45,308 @@
     </script>
     
     <style>
-        .fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
-        .fade-enter-from, .fade-leave-to { opacity: 0; }
-        /* Custom scrollbar for better UX */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #f1f1f1; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none;  scrollbar-width: none; }
+        body { background-color: #F3F4F6; }
+        .modal-enter-active, .modal-leave-active { transition: opacity 0.3s ease; }
+        .modal-enter-from, .modal-leave-to { opacity: 0; }
+        .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #3b82f6; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .snap-mandatory { scroll-snap-type: x mandatory; }
+        .snap-center { scroll-snap-align: center; }
+
+        /* Google Web Component Styling */
+        gmp-place-autocomplete {
+            --gmp-px-color-surface: #ffffff;
+            --gmp-px-color-on-surface: #1f2937;
+            --gmp-px-color-on-surface-variant: #6b7280;
+            --gmp-px-font-family-base: 'Inter', sans-serif;
+            --gmp-px-font-size-base: 0.875rem;
+        }
+        gmp-place-autocomplete::part(input) {
+            border: 1px solid #e5e7eb;
+            border-radius: 0.75rem;
+            padding: 0.75rem 1rem;
+            width: 100%;
+            outline: none;
+            box-shadow: none;
+            background-color: #ffffff !important;
+            color: #1f2937 !important;
+        }
+        gmp-place-autocomplete::part(input):focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 1px #3b82f6;
+        }
     </style>
 </head>
-<body class="bg-gray-50 text-slate-800 antialiased">
+<body class="text-slate-800 antialiased h-screen overflow-hidden flex justify-center bg-gray-200">
 
-    <div id="app" class="min-h-screen flex flex-col">
-        <nav class="bg-white border-b border-gray-200 sticky top-0 z-10">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex justify-between h-16">
-                    <div class="flex items-center gap-2 cursor-pointer" @click="currentView = 'dashboard'">
-                        <div class="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white font-bold">W</div>
-                        <span class="font-bold text-xl tracking-tight text-slate-900">WanderLust</span>
-                    </div>
-                    <div class="flex items-center space-x-4">
-                        <button @click="currentView = 'dashboard'" class="text-gray-500 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Dashboard</button>
-                        <div class="h-8 w-8 rounded-full bg-gray-200 overflow-hidden border border-gray-300">
-                            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="User" />
-                        </div>
-                        <div class="flex gap-2">
-                            <button @click="shareTrip" class="px-3 py-1 bg-brand-100 text-brand-700 hover:bg-brand-200 rounded-full text-sm font-medium flex items-center gap-1">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
-                                Share Trip
-                            </button>
-     
-                            <span class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
-                                Budget: ${{ activeTripBudget }}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </nav>
+    <div id="app" class="w-full max-w-md h-full bg-slate-50 relative shadow-2xl flex flex-col overflow-hidden">
 
-        <main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full">
-            
-            <div v-if="currentView === 'dashboard'">
-                <div class="md:flex md:items-center md:justify-between mb-8">
-                    <div>
-                        <h1 class="text-3xl font-bold text-slate-900">My Trips</h1>
-                        <p class="mt-1 text-sm text-gray-500">Manage your upcoming adventures and past memories.</p>
-                    </div>
-                    <div class="mt-4 md:mt-0">
-                        <button @click="openNewTripModal" class="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 transition-colors">
-                            <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                            New Trip
-                        </button>
-                    </div>
+        <div v-if="currentView === 'dashboard'" class="p-6 overflow-y-auto h-full pb-20 relative">
+            <div class="flex justify-between items-center mb-6 pt-4">
+                <div>
+                    <h1 class="text-2xl font-bold text-slate-900">My Trips</h1>
+                    <p class="text-sm text-gray-500">Ready for your next adventure?</p>
                 </div>
-
-                <div class="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-10">
-                    <div class="bg-white overflow-hidden shadow rounded-xl border border-gray-100 p-5">
-                        <dt class="text-sm font-medium text-gray-500 truncate">Total Trips</dt>
-                        <dd class="mt-1 text-3xl font-semibold text-slate-900">{{ trips.length }}</dd>
-                    </div>
-                    <div class="bg-white overflow-hidden shadow rounded-xl border border-gray-100 p-5">
-                        <dt class="text-sm font-medium text-gray-500 truncate">Upcoming</dt>
-                        <dd class="mt-1 text-3xl font-semibold text-brand-600">{{ upcomingTripsCount }}</dd>
-                    </div>
-                    <div class="bg-white overflow-hidden shadow rounded-xl border border-gray-100 p-5">
-                        <dt class="text-sm font-medium text-gray-500 truncate">Total Budget Spent</dt>
-                        <dd class="mt-1 text-3xl font-semibold text-slate-900">${{ totalGlobalBudget }}</dd>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <div v-for="trip in trips" :key="trip.id" @click="selectTrip(trip)" class="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer overflow-hidden group">
-                        <div class="h-40 bg-gray-200 relative overflow-hidden">
-                            <img :src="trip.image" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="Trip">
-                            <div class="absolute top-2 right-2 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-bold text-gray-700">
-                                {{ trip.date }}
-                            </div>
-                        </div>
-                        <div class="p-5">
-                            <h3 class="text-lg font-bold text-gray-900">{{ trip.destination }}</h3>
-                            <p class="text-sm text-gray-500 mb-4">{{ trip.friends.length }} Friends • {{ trip.days.length }} Days</p>
-                            <div class="flex items-center justify-between">
-                                <div class="flex -space-x-2">
-                                    <div v-for="(friend, i) in trip.friends.slice(0,3)" :key="i" class="w-8 h-8 rounded-full bg-gray-300 border-2 border-white flex items-center justify-center text-xs overflow-hidden">
-                                        <img :src="`https://api.dicebear.com/7.x/avataaars/svg?seed=${friend}`" />
-                                    </div>
-                                    <div v-if="trip.friends.length > 3" class="w-8 h-8 rounded-full bg-gray-100 border-2 border-white flex items-center justify-center text-xs font-medium text-gray-500">
-                                        +{{ trip.friends.length - 3 }}
-                                    </div>
-                                </div>
-                                <span class="text-brand-600 font-medium text-sm">View Details &rarr;</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <button @click="openCreateTripModal" class="bg-blue-600 text-white p-3 rounded-full shadow-lg hover:bg-blue-700 transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                </button>
             </div>
 
-            <div v-if="currentView === 'details' && activeTrip">
-                <div class="mb-6">
-                    <button @click="currentView = 'dashboard'" class="mb-2 text-sm text-gray-500 hover:text-brand-600 flex items-center gap-1">
-                        &larr; Back to Dashboard
+            <div v-if="trips.length === 0" class="text-center py-20 text-gray-400">
+                <p>No trips found.</p>
+                <p class="text-xs mt-2">Did you add your Firebase Config?</p>
+            </div>
+
+            <div class="space-y-4">
+                <div v-for="trip in trips" :key="trip.id" @click="selectTrip(trip)" class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 cursor-pointer active:scale-95 transition-transform hover:shadow-md relative group">
+                    <div class="h-32 rounded-xl bg-gray-200 mb-3 overflow-hidden relative">
+                        <img :src="trip.image || 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800'" class="w-full h-full object-cover">
+                        <div class="absolute bottom-2 left-2 bg-white/90 px-2 py-1 rounded-lg text-xs font-bold shadow-sm backdrop-blur-sm">
+                            {{ formatDateRange(trip.startDate, trip.endDate) }}
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <div class="min-w-0 pr-2">
+                            <h3 class="text-lg font-bold truncate">{{ trip.destination }}</h3>
+                            <p class="text-xs text-gray-500 mt-1">{{ trip.friends?.length || 1 }} Travelers</p>
+                        </div>
+                        <div class="text-right shrink-0">
+                             <div class="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded-full border border-green-100">Total Cost: ${{ getTripBudget(trip) }}</div>
+                        </div>
+                    </div>
+                    <button @click.stop="deleteTrip(trip.id)" class="absolute top-2 right-2 bg-white/90 p-2 rounded-full text-gray-400 hover:text-red-500 shadow-sm z-20">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                     </button>
-                    <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
-                        <div>
-                            <h1 class="text-4xl font-bold text-slate-900">{{ activeTrip.destination }}</h1>
-                            <p class="text-gray-500">{{ activeTrip.date }}</p>
+                </div>
+            </div>
+            
+            <transition name="modal">
+                <div v-if="showCreateTripModal" class="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div class="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-fade-in">
+                        <h2 class="text-xl font-bold text-slate-900 mb-4">Start New Adventure</h2>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 mb-1">DESTINATION</label>
+                                <gmp-place-autocomplete ref="tripDestSearchRef" class="w-full" placeholder="Search city (e.g. Tokyo)"></gmp-place-autocomplete>
+                                <p class="text-[10px] mt-1" :class="newTripData.destination ? 'text-green-600 font-bold' : 'text-gray-400'">
+                                    Selected: {{ newTripData.destination || 'None' }}
+                                </p>
+                            </div>
+                            <div class="flex gap-4">
+                                <div class="w-1/2">
+                                    <label class="block text-xs font-bold text-gray-500 mb-1">START DATE</label>
+                                    <input v-model="newTripData.startDate" type="date" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 outline-none focus:border-blue-500 text-sm">
+                                </div>
+                                <div class="w-1/2">
+                                    <label class="block text-xs font-bold text-gray-500 mb-1">END DATE</label>
+                                    <input v-model="newTripData.endDate" type="date" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 outline-none focus:border-blue-500 text-sm">
+                                </div>
+                            </div>
                         </div>
-                        <div class="flex gap-2">
-                             <span class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
-                                Budget: ${{ activeTripBudget }}
-                             </span>
+                        <div class="flex gap-3 mt-8">
+                            <button @click="showCreateTripModal = false" class="w-1/3 py-3 rounded-xl font-bold text-sm text-gray-500 hover:bg-gray-100 transition-colors">Cancel</button>
+                            <button @click="saveNewTrip" class="w-2/3 bg-blue-600 text-white py-3 rounded-xl font-bold text-sm shadow-lg hover:bg-blue-700 transition-colors disabled:opacity-50" :disabled="!newTripData.destination || !newTripData.startDate">Create Trip</button>
                         </div>
                     </div>
                 </div>
+            </transition>
+        </div>
 
-                <div class="border-b border-gray-200 mb-6">
-                    <nav class="-mb-px flex space-x-8 overflow-x-auto">
-                        <button 
-                            v-for="tab in ['Schedule', 'Map', 'Expenses', 'Shopping']" 
-                            :key="tab"
-                            @click="activeTab = tab"
-                            :class="[activeTab === tab ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300', 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm']"
-                        >
-                            {{ tab }}
-                        </button>
-                    </nav>
+        <div v-if="currentView === 'details' && activeTrip" class="flex flex-col h-full relative bg-slate-50">
+            
+            <div class="relative z-10 bg-white/80 backdrop-blur-md border-b border-gray-100 pt-10 pb-4 px-6 shadow-sm">
+                <div class="flex justify-between items-center mb-2">
+                    <button @click="currentView = 'dashboard'" class="text-sm text-gray-500 flex items-center gap-1 hover:text-blue-600 font-medium">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                        Back
+                    </button>
+                    <button @click="shareTrip" class="text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded-full font-bold flex items-center gap-1 hover:bg-blue-100 transition-colors">
+                        Share
+                    </button>
                 </div>
+                <div class="flex justify-between items-end">
+                    <h1 class="text-2xl font-black text-slate-900 tracking-tight break-words max-w-[70%] leading-tight">{{ activeTrip.destination }}</h1>
+                    <div class="text-right">
+                        <span class="text-[10px] text-gray-500 font-medium block">Rate</span>
+                        <span class="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-md">{{ exchangeRateText }}</span>
+                    </div>
+                </div>
+            </div>
 
-                <div v-if="activeTab === 'Schedule'" class="space-y-6">
-                    <div v-for="(day, index) in activeTrip.days" :key="index" class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                        <div class="flex justify-between items-center mb-4">
-                            <h3 class="text-lg font-bold text-gray-900">Day {{ index + 1 }}</h3>
-                            <button @click="addActivity(index)" class="text-sm text-brand-600 font-medium hover:underline">+ Add Activity</button>
+            <div class="flex-1 overflow-y-auto no-scrollbar pb-32 relative">
+                <div v-if="activeTab === 'Schedule'">
+                    
+                    <div class="px-6 mt-6 mb-2">
+                        <div class="rounded-3xl p-5 text-white shadow-lg relative overflow-hidden transition-all duration-500"
+                             :class="{
+                                'bg-gradient-to-br from-blue-400 to-blue-500': currentWeather.condition === 'Sunny' || currentWeather.condition === 'Clear',
+                                'bg-gradient-to-br from-gray-400 to-gray-500': currentWeather.condition === 'Cloudy',
+                                'bg-gradient-to-br from-slate-600 to-slate-700': currentWeather.condition === 'Rainy'
+                             }">
+                            
+                            <div class="absolute inset-0 pointer-events-none opacity-30">
+                                <div v-if="currentWeather.condition === 'Sunny'" class="absolute -right-10 -top-10 w-40 h-40 bg-white rounded-full blur-2xl animate-spin-slow"></div>
+                                <div v-if="currentWeather.condition === 'Cloudy'" class="absolute top-2 left-0 w-full h-full animate-float">
+                                    <div class="w-20 h-8 bg-white/40 rounded-full blur-xl absolute top-4 left-10"></div>
+                                    <div class="w-32 h-10 bg-white/30 rounded-full blur-xl absolute top-12 right-10"></div>
+                                </div>
+                                <div v-if="currentWeather.condition === 'Rainy'" class="absolute inset-0">
+                                    <div class="w-0.5 h-4 bg-white/50 absolute top-2 left-1/4 animate-rain"></div>
+                                    <div class="w-0.5 h-4 bg-white/50 absolute top-5 left-1/2 animate-rain" style="animation-delay: 0.2s"></div>
+                                    <div class="w-0.5 h-4 bg-white/50 absolute top-3 left-3/4 animate-rain" style="animation-delay: 0.4s"></div>
+                                </div>
+                            </div>
+
+                            <div class="relative z-10 flex justify-between items-center">
+                                <div>
+                                    <div class="text-3xl font-bold">{{ currentWeather.temp }}°C</div>
+                                    <div class="text-sm font-medium opacity-90">{{ currentWeather.condition }}</div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-xs font-bold bg-white/20 px-2 py-1 rounded-lg backdrop-blur-sm">{{ activeTrip.destination.split(',')[0] }}</div>
+                                    <div class="text-[10px] mt-1 opacity-75">Feels like {{ currentWeather.temp - 2 }}°</div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="relative border-l-2 border-gray-100 ml-3 space-y-6">
-                            <div v-for="(activity, aIndex) in day.activities" :key="aIndex" class="ml-6 relative">
-                                <div class="absolute -left-[31px] bg-white border-2 border-brand-500 rounded-full w-4 h-4"></div>
-                                <div class="flex justify-between items-start">
-                                    <div>
-                                        <p class="font-semibold text-gray-900">{{ activity.time }} - {{ activity.title }}</p>
-                                        <p class="text-sm text-gray-500">{{ activity.location }}</p>
+                    </div>
+
+                    <div class="flex gap-3 px-6 py-4 overflow-x-auto no-scrollbar snap-mandatory snap-x">
+                        <button @click="selectedDayIndex = -1"
+                            :class="[selectedDayIndex === -1 ? 'bg-slate-800 text-white shadow-lg scale-105' : 'bg-white text-gray-500 shadow-sm border border-gray-100']"
+                            class="flex-shrink-0 w-16 h-20 rounded-2xl flex flex-col items-center justify-center transition-all duration-200 snap-center">
+                            <span class="text-[10px] font-medium opacity-80 uppercase tracking-wide">Day 0</span>
+                            <span class="text-lg font-bold">PREP</span>
+                        </button>
+
+                        <button v-for="(day, index) in activeTrip.days" :key="index" @click="selectedDayIndex = index"
+                            :class="[selectedDayIndex === index ? 'bg-slate-800 text-white shadow-lg scale-105' : 'bg-white text-gray-500 shadow-sm border border-gray-100']"
+                            class="flex-shrink-0 w-16 h-20 rounded-2xl flex flex-col items-center justify-center transition-all duration-200 snap-center">
+                            <span class="text-[10px] font-medium opacity-80 uppercase tracking-wide">Day {{ index + 1 }}</span>
+                            <span class="text-lg font-bold">{{ getDayDate(activeTrip.startDate, index) }}</span>
+                        </button>
+                        <button @click="addDay" class="flex-shrink-0 w-16 h-20 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-400 hover:bg-gray-200 transition-colors snap-center">
+                            <span class="text-xl font-bold">+</span>
+                        </button>
+                    </div>
+
+                    <div v-if="selectedDayIndex === -1" class="px-6 space-y-4 pb-4 animate-fade-in">
+                        <div class="text-sm font-bold text-slate-900 mb-2">Packing Checklist</div>
+                        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                            <div class="p-3 bg-indigo-50 border-b border-indigo-100 flex gap-2">
+                                <input v-model="newPackingItem" @keyup.enter="addPackingItem" type="text" placeholder="Add packing item..." class="flex-1 bg-transparent text-sm outline-none placeholder-indigo-300 text-indigo-900">
+                                <button @click="addPackingItem" class="text-indigo-600 font-bold text-sm hover:text-indigo-800">Add</button>
+                            </div>
+                            <ul class="divide-y divide-gray-100">
+                                <li v-if="!activeTrip.packingList || activeTrip.packingList.length === 0" class="p-6 text-center text-gray-400 text-xs italic">
+                                    Empty bag! Add items to pack.
+                                </li>
+                                <li v-for="(item, i) in activeTrip.packingList" :key="i" class="p-4 flex items-center gap-3 hover:bg-gray-50 transition-colors">
+                                    <input type="checkbox" v-model="item.checked" @change="savePackingList" class="h-5 w-5 rounded text-indigo-600 border-gray-300 focus:ring-indigo-500 shrink-0 cursor-pointer">
+                                    <span :class="{'line-through text-gray-400': item.checked}" class="flex-1 text-sm text-slate-900 break-words font-medium">{{ item.text }}</span>
+                                    <button @click="removePackingItem(i)" class="text-gray-300 hover:text-red-500 shrink-0 p-1">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div v-else>
+                        <div class="px-6 flex justify-between items-center mb-2 z-10 relative">
+                            <div class="text-sm font-bold text-slate-900">Itinerary</div>
+                            <div class="flex gap-2">
+                                <button v-if="activeTrip.days.length > 1" @click="removeDay(selectedDayIndex)" class="bg-white text-red-500 px-3 py-1.5 rounded-lg text-xs font-bold shadow border border-red-100 flex items-center gap-1 hover:bg-red-50 transition-colors">
+                                    Day -
+                                </button>
+                                <button @click="openActivityModal" class="bg-slate-800 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow flex items-center gap-1 hover:bg-slate-700 transition-colors">+ Activity</button>
+                            </div>
+                        </div>
+
+                        <div class="px-4 space-y-6 pb-4 relative min-h-[200px]">
+                            <div class="absolute left-[69px] top-4 bottom-0 w-0.5 bg-gray-200 z-0" v-if="activeTrip.days[selectedDayIndex]?.activities.length > 0"></div>
+
+                            <div v-if="!activeTrip.days[selectedDayIndex] || activeTrip.days[selectedDayIndex].activities.length === 0" class="text-center py-10 text-gray-400 text-sm italic">
+                                No plans for Day {{ selectedDayIndex + 1 }}.
+                            </div>
+
+                            <div v-for="(activity, i) in activeTrip.days[selectedDayIndex]?.activities" :key="i" class="relative flex gap-4">
+                                
+                                <div class="w-12 text-right pt-6 shrink-0 z-10" :class="{'invisible': activity.type === 'flight'}">
+                                    <div class="text-xs font-bold text-slate-900 leading-none">{{ activity.startTime }}</div>
+                                    <div class="text-[10px] text-gray-400 font-medium mt-0.5" v-if="activity.type !== 'accommodation'">{{ calculateDurationSimple(activity.startTime, activity.endTime) }}</div>
+                                </div>
+
+                                <div class="absolute left-[59px] top-6 w-3 h-3 rounded-full border-2 border-white z-10 shadow-sm" :class="getCategoryColor(activity.type)"></div>
+
+                                <div class="flex-1 min-w-0">
+                                    
+                                    <div v-if="activity.type === 'flight'" class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-4 text-white shadow-soft hover:shadow-md transition-shadow relative overflow-hidden group">
+                                        <div v-if="activity.isEditing" class="mb-3 bg-white/20 p-2 rounded-lg backdrop-blur-sm animate-fade-in border border-white/30">
+                                            <div class="flex items-end gap-2">
+                                                <div class="flex-1"><label class="text-[9px] font-bold text-white/80 block mb-1">START</label><input type="time" v-model="activity.startTime" class="w-full bg-white/20 text-white border border-white/30 rounded-md px-2 py-1 text-xs font-bold outline-none"></div>
+                                                <div class="flex-1"><label class="text-[9px] font-bold text-white/80 block mb-1">END</label><input type="time" v-model="activity.endTime" class="w-full bg-white/20 text-white border border-white/30 rounded-md px-2 py-1 text-xs font-bold outline-none"></div>
+                                                <button @click="saveQuickEdit(selectedDayIndex)" class="bg-white text-blue-600 p-1.5 rounded-md shadow h-[26px] w-[26px] flex items-center justify-center font-bold">✓</button>
+                                            </div>
+                                        </div>
+                                        <div class="flex justify-between items-start mb-3">
+                                            <div class="flex items-center gap-2">
+                                                <span class="bg-white/20 px-2 py-0.5 rounded text-[10px] font-bold uppercase">FLIGHT</span>
+                                                <span class="text-xl font-bold tracking-tight">{{ activity.startTime }} <span class="text-sm opacity-80 font-normal mx-1">-</span> {{ activity.endTime }}</span>
+                                            </div>
+                                            <div class="flex gap-1">
+                                                <button @click="activity.isEditing = !activity.isEditing" class="p-1 hover:bg-white/20 rounded transition-colors"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button>
+                                                <button @click="removeActivity(selectedDayIndex, i)" class="p-1 hover:bg-white/20 rounded transition-colors"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+                                            </div>
+                                        </div>
+                                        <div class="flex justify-between items-center relative mb-2">
+                                            <div class="text-left"><div class="text-[9px] opacity-70 font-bold">FROM</div><div class="text-2xl font-black tracking-wide">{{ activity.origin || 'HKG' }}</div></div>
+                                            <div class="flex-1 px-4 flex justify-center items-center relative"><div class="absolute w-full border-t border-dashed border-white/40"></div><svg class="w-5 h-5 text-white transform rotate-90 relative z-10" fill="currentColor" viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg></div>
+                                            <div class="text-right"><div class="text-[9px] opacity-70 font-bold">TO</div><div class="text-2xl font-black tracking-wide">{{ activity.destination || 'TYO' }}</div></div>
+                                        </div>
+                                        <div class="flex justify-between items-center text-[10px] opacity-80 border-t border-white/10 pt-2 mt-2">
+                                            <span class="truncate max-w-[70%] font-bold">{{ activity.title || 'Flight' }}</span>
+                                            <span class="font-bold bg-white/20 px-2 py-0.5 rounded">Confirmed</span>
+                                        </div>
+                                    </div>
+
+                                    <div v-else class="bg-white rounded-2xl p-4 shadow-soft border border-gray-50 hover:shadow-md transition-shadow group">
+                                        <div v-if="activity.isEditing" class="mb-3 p-3 bg-green-50 rounded-xl border border-green-100">
+                                            <div class="flex items-end gap-2">
+                                                <div class="flex-1"><label class="text-[9px] font-bold text-green-600 block mb-1">START</label><input type="time" v-model="activity.startTime" class="w-full bg-white border border-green-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-1 focus:ring-green-500"></div>
+                                                <div class="flex-1"><label class="text-[9px] font-bold text-green-600 block mb-1">END</label><input type="time" v-model="activity.endTime" class="w-full bg-white border border-green-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-1 focus:ring-green-500"></div>
+                                                <button @click="saveQuickEdit(selectedDayIndex)" class="bg-green-600 text-white p-1.5 rounded-lg shadow h-[26px] w-[26px] flex items-center justify-center"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg></button>
+                                            </div>
+                                        </div>
+
+                                        <div class="flex items-start gap-3">
+                                            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0 shadow-sm" :class="getCategoryColor(activity.type)">
+                                                <span class="text-xs" v-html="getCategoryIcon(activity.type)"></span>
+                                            </div>
+                                            <div class="flex-1 min-w-0">
+                                                <div class="flex justify-between items-start">
+                                                    <div class="min-w-0 pr-2">
+                                                        <h3 class="font-bold text-slate-900 text-sm leading-tight break-words">{{ activity.title }}</h3>
+                                                        <div class="text-[9px] uppercase font-bold text-gray-400 mt-0.5 tracking-wider">{{ activity.type }}</div>
+                                                    </div>
+                                                    <div class="flex gap-1 shrink-0">
+                                                        <button @click="activity.isEditing = !activity.isEditing" class="text-gray-300 hover:text-blue-500 p-1 transition-colors"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button>
+                                                        <button @click="removeActivity(selectedDayIndex, i)" class="text-gray-300 hover:text-red-400 p-1 shrink-0"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+                                                    </div>
+                                                </div>
+                                                <div class="mt-2 pt-2 border-t border-gray-50">
+                                                    <div v-if="activity.type === 'accommodation'"><div class="text-xs text-gray-600 font-medium"><span class="text-gray-400">Check-in:</span> {{ activity.checkInDate }} <span class="text-gray-400 ml-2">Check-out:</span> {{ activity.checkOutDate }}</div><div class="mt-1 text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded w-fit font-bold">{{ calculateNights(activity.checkInDate, activity.checkOutDate) }} Nights</div></div>
+                                                    <div v-else-if="activity.type === 'transport'"><div class="text-xs text-gray-600 font-medium flex items-center gap-1"><span>{{ activity.origin }}</span><svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg><span>{{ activity.destination }}</span></div></div>
+                                                    <div v-else class="flex items-center gap-1 text-xs text-gray-500"><span class="font-medium">{{ activity.startTime }} - {{ activity.endTime }}</span></div>
+                                                </div>
+                                                <div v-if="activity.address" class="mt-1 text-[10px] text-gray-500 flex items-start gap-1"><svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg><span class="break-words">{{ activity.address }}</span></div>
+                                                <div v-if="activity.openingHours" class="mt-1 text-[10px] text-green-600 flex items-start gap-1"><svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>{{ activity.openingHours }}</span></div>
+                                                <div v-if="activity.remarks" class="mt-2 text-[10px] text-gray-500 bg-gray-50 p-2 rounded italic border border-gray-100">"{{ activity.remarks }}"</div>
+                                                <div v-if="activity.images && activity.images.length > 0" class="mt-2 flex gap-2 overflow-x-auto no-scrollbar pb-1"><img v-for="(img, idx) in activity.images" :key="idx" :src="img" class="w-12 h-12 rounded-lg object-cover border border-gray-100 bg-gray-100 shrink-0 cursor-pointer hover:opacity-90 transition-opacity" @click.stop="openImage(img)"></div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -171,305 +354,541 @@
                     </div>
                 </div>
 
-                <div v-if="activeTab === 'Map'" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden h-[500px]">
-                    <iframe 
-                        width="100%" 
-                        height="100%" 
-                        frameborder="0" 
-                        scrolling="no" 
-                        marginheight="0" 
-                        marginwidth="0" 
-                        :src="`https://maps.google.com/maps?q=${activeTrip.destination}&t=&z=13&ie=UTF8&iwloc=&output=embed`">
-                    </iframe>
+                <div v-if="activeTab === 'Map'" class="h-full bg-white relative">
+                     <iframe width="100%" height="100%" frameborder="0" style="border:0" :src="`https://maps.google.com/maps?q=${activeTrip.destination}&t=&z=13&ie=UTF8&iwloc=&output=embed`" allowfullscreen></iframe>
                 </div>
-
-                <div v-if="activeTab === 'Expenses'" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div class="lg:col-span-1 space-y-6">
-                        <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-                            <h3 class="font-bold text-lg mb-4">Add Expense</h3>
-                            <form @submit.prevent="addExpense" class="space-y-3">
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-700">Description</label>
-                                    <input v-model="newExpense.desc" type="text" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 sm:text-sm border p-2">
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-700">Amount ($)</label>
-                                    <input v-model.number="newExpense.amount" type="number" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 sm:text-sm border p-2">
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-700">Paid By</label>
-                                    <select v-model="newExpense.payer" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 sm:text-sm border p-2">
-                                        <option v-for="friend in activeTrip.friends" :value="friend">{{ friend }}</option>
-                                    </select>
-                                </div>
-                                <button type="submit" class="w-full bg-brand-600 text-white py-2 rounded-md hover:bg-brand-700 font-medium text-sm">Add Expense</button>
-                            </form>
+                <div v-if="activeTab === 'Expenses'" class="px-6 py-4 space-y-6">
+                    <div class="bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-6 text-white shadow-xl">
+                        <div class="text-sm text-gray-400 mb-1">Total Trip Cost</div>
+                        <div class="text-3xl font-bold mb-4">${{ activeTripBudget }}</div>
+                        <div class="border-t border-gray-700 pt-4 flex justify-between items-center">
+                            <span class="text-xs text-gray-400">Split per person ({{ activeTrip.friends ? activeTrip.friends.length : 1 }})</span>
+                            <span class="font-bold text-lg">${{ splitAmount }}</span>
                         </div>
-
-                        <div class="bg-blue-50 p-5 rounded-xl border border-blue-100">
-                            <h3 class="font-bold text-brand-900 mb-2">Split Summary</h3>
-                            <div class="flex justify-between items-center mb-2">
-                                <span class="text-sm text-brand-800">Total Cost:</span>
-                                <span class="font-bold text-lg text-brand-900">${{ activeTripBudget }}</span>
-                            </div>
-                            <div class="flex justify-between items-center border-t border-blue-200 pt-2">
-                                <span class="text-sm text-brand-800">Per Person ({{ activeTrip.friends.length }}):</span>
-                                <span class="font-bold text-lg text-brand-900">${{ splitAmount }}</span>
+                    </div>
+                    <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                        <h3 class="font-bold text-sm text-slate-900 mb-3">Add Expense</h3>
+                        <div class="space-y-2">
+                            <input v-model="newExpense.desc" type="text" placeholder="Description" class="w-full bg-gray-50 rounded-lg px-3 py-2 text-sm outline-none border focus:ring-2 focus:ring-blue-100 transition-shadow">
+                            <div class="flex gap-2">
+                                <input v-model.number="newExpense.amount" type="number" placeholder="$" class="w-1/2 bg-gray-50 rounded-lg px-3 py-2 text-sm outline-none border focus:ring-2 focus:ring-blue-100 transition-shadow">
+                                <button @click="addExpense" class="w-1/2 bg-blue-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-blue-700 transition-colors">Add</button>
                             </div>
                         </div>
                     </div>
-
-                    <div class="lg:col-span-2 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid By</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                                    <th class="px-6 py-3"></th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
-                                <tr v-for="(expense, i) in activeTrip.expenses" :key="i">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ expense.desc }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ expense.payer }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">${{ expense.amount }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                        <button @click="removeExpense(i)" class="text-red-600 hover:text-red-900">Delete</button>
-                                    </td>
-                                </tr>
-                                <tr v-if="activeTrip.expenses.length === 0">
-                                    <td colspan="4" class="px-6 py-10 text-center text-gray-500 italic">No expenses added yet.</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <div class="space-y-3 pb-4">
+                        <div v-for="(expense, i) in activeTrip.expenses" :key="i" class="bg-white rounded-xl p-3 flex justify-between items-center shadow-sm">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 text-xs font-bold shrink-0">$</div>
+                                <span class="text-sm font-medium text-slate-900 break-words">{{ expense.desc }}</span>
+                            </div>
+                            <div class="flex items-center gap-2 pl-2 shrink-0">
+                                <span class="font-bold text-slate-800">${{ expense.amount }}</span>
+                                <button @click="removeExpense(i)" class="text-red-400 text-xs hover:text-red-600">×</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
-
-                <div v-if="activeTab === 'Shopping'" class="max-w-2xl mx-auto">
-                    <div class="bg-white shadow rounded-xl border border-gray-200 overflow-hidden">
-                        <div class="p-4 bg-gray-50 border-b border-gray-200 flex gap-2">
-                            <input v-model="newItem" @keyup.enter="addItem" type="text" placeholder="Add item (e.g., Sunscreen, Passport)..." class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 sm:text-sm border p-2">
-                            <button @click="addItem" class="bg-brand-600 text-white px-4 py-2 rounded-md hover:bg-brand-700 text-sm font-medium">Add</button>
+                <div v-if="activeTab === 'Shopping'" class="px-6 py-4">
+                     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div class="p-3 bg-gray-50 border-b border-gray-100 flex gap-2">
+                            <input v-model="newItem" @keyup.enter="addItem" type="text" placeholder="Add item..." class="flex-1 bg-transparent text-sm outline-none">
+                            <button @click="addItem" class="text-blue-600 font-bold text-sm hover:text-blue-800">Add</button>
                         </div>
-                        <ul class="divide-y divide-gray-200">
-                            <li v-for="(item, i) in activeTrip.shoppingList" :key="i" class="p-4 flex items-center hover:bg-gray-50 transition-colors">
-                                <input type="checkbox" v-model="item.checked" class="h-4 w-4 text-brand-600 focus:ring-brand-500 border-gray-300 rounded">
-                                <span :class="{'line-through text-gray-400': item.checked, 'text-gray-900': !item.checked}" class="ml-3 flex-1">{{ item.text }}</span>
-                                <button @click="removeItem(i)" class="text-gray-400 hover:text-red-500 text-sm">Remove</button>
-                            </li>
-                            <li v-if="activeTrip.shoppingList.length === 0" class="p-8 text-center text-gray-500">
-                                Your list is empty. Start adding items!
+                        <ul class="divide-y divide-gray-100">
+                            <li v-for="(item, i) in activeTrip.shoppingList" :key="i" class="p-4 flex items-center gap-3 hover:bg-gray-50">
+                                <input type="checkbox" v-model="item.checked" class="h-4 w-4 rounded text-blue-600 border-gray-300 focus:ring-blue-500 shrink-0">
+                                <span :class="{'line-through text-gray-400': item.checked}" class="flex-1 text-sm text-slate-900 break-words">{{ item.text }}</span>
+                                <button @click="removeItem(i)" class="text-gray-300 hover:text-red-500 shrink-0">×</button>
                             </li>
                         </ul>
                     </div>
                 </div>
-
             </div>
-        </main>
+
+            <transition name="modal">
+                <div v-if="selectedImage" class="absolute inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4" @click="selectedImage = null">
+                    <button class="absolute top-4 right-4 text-white/70 hover:text-white p-2"><svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+                    <img :src="selectedImage" class="max-w-full max-h-full rounded-lg shadow-2xl object-contain" @click.stop>
+                </div>
+            </transition>
+
+            <transition name="modal">
+                <div v-if="showActivityModal" class="absolute inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl h-[90vh] sm:h-auto overflow-y-auto">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-bold text-slate-900">Add New Activity</h2>
+                            <button @click="showActivityModal = false" class="bg-gray-100 p-2 rounded-full hover:bg-gray-200">
+                                <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
+                        </div>
+
+                        <div class="grid grid-cols-4 gap-2 mb-6">
+                            <button v-for="cat in categories" :key="cat.id" @click="newActivity.type = cat.id" :class="newActivity.type === cat.id ? 'bg-slate-800 text-white' : 'bg-gray-50 text-gray-500'" class="flex flex-col items-center justify-center p-2 rounded-xl transition-all">
+                                <span class="text-xl mb-1">{{ cat.emoji }}</span>
+                                <span class="text-[9px] font-bold uppercase">{{ cat.label }}</span>
+                            </button>
+                        </div>
+
+                        <div v-if="newActivity.type === 'flight'" class="space-y-4 animate-fade-in">
+                            <label class="block text-xs font-bold text-blue-700 mb-1">FLIGHT NUMBER</label>
+                            <div class="flex gap-2">
+                                <input v-model="newActivity.flightCode" type="text" placeholder="e.g. CX888" class="flex-1 bg-white border border-blue-200 rounded-lg px-3 py-3 text-sm outline-none uppercase font-bold">
+                                <button @click="fetchFlightData" class="bg-blue-600 text-white px-4 rounded-lg font-bold text-xs shadow-md hover:bg-blue-700 disabled:opacity-50" :disabled="isFetching">
+                                    {{ isFetching ? '...' : 'Search' }}
+                                </button>
+                            </div>
+                            <div v-if="newActivity.title" class="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                                <div class="text-xs font-bold text-blue-800">{{ newActivity.title }}</div>
+                                <div class="flex justify-between mt-1 text-[10px] text-blue-600">
+                                    <span>{{ newActivity.origin }} ➝ {{ newActivity.destination }}</span>
+                                    <span>{{ newActivity.startTime }} - {{ newActivity.endTime }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div v-else-if="newActivity.type === 'transport'" class="space-y-4 animate-fade-in">
+                            <select v-model="newActivity.transportType" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm">
+                                <option value="Train">Train / Subway</option>
+                                <option value="Bus">Bus</option>
+                                <option value="Taxi">Taxi / Uber</option>
+                                <option value="Ferry">Ferry</option>
+                            </select>
+                            <div class="flex gap-2">
+                                <input v-model="newActivity.origin" type="text" placeholder="Origin" class="w-1/2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm">
+                                <input v-model="newActivity.destination" type="text" placeholder="Destination" class="w-1/2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm">
+                            </div>
+                            <div class="flex gap-4">
+                                <input v-model="newActivity.startTime" type="time" class="w-1/2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm">
+                                <input v-model="newActivity.endTime" type="time" class="w-1/2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm">
+                            </div>
+                        </div>
+
+                        <div v-else-if="newActivity.type === 'accommodation'" class="space-y-4 animate-fade-in">
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 mb-1">SEARCH HOTEL</label>
+                                <gmp-place-autocomplete ref="hotelSearchRef" class="w-full" placeholder="Search hotels..."></gmp-place-autocomplete>
+                            </div>
+                            <input v-model="newActivity.title" type="text" placeholder="Hotel Name" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none text-sm font-bold">
+                            <input v-model="newActivity.address" type="text" placeholder="Address" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none text-sm">
+                            <div class="flex gap-4">
+                                <div class="w-1/2">
+                                    <label class="block text-xs font-bold text-gray-500 mb-1">CHECK-IN</label>
+                                    <input v-model="newActivity.checkInDate" type="date" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm">
+                                </div>
+                                <div class="w-1/2">
+                                    <label class="block text-xs font-bold text-gray-500 mb-1">CHECK-OUT</label>
+                                    <input v-model="newActivity.checkOutDate" type="date" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm">
+                                </div>
+                            </div>
+                            <div class="flex gap-4">
+                                <div class="w-1/2">
+                                    <label class="block text-xs font-bold text-gray-500 mb-1">TIME</label>
+                                    <input v-model="newActivity.startTime" type="time" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm">
+                                </div>
+                                <div class="w-1/2 flex items-end pb-3 text-sm font-bold text-indigo-600">Total: {{ calculateNights(newActivity.checkInDate, newActivity.checkOutDate) }} Nights</div>
+                            </div>
+                        </div>
+
+                        <div v-else class="space-y-4 animate-fade-in">
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 mb-1">SEARCH PLACE</label>
+                                <gmp-place-autocomplete ref="generalSearchRef" class="w-full" placeholder="Search places..."></gmp-place-autocomplete>
+                            </div>
+                            <input v-model="newActivity.title" type="text" placeholder="Place Name" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none text-sm font-bold">
+                            <div class="flex gap-4">
+                                <div class="w-1/2">
+                                    <label class="block text-xs font-bold text-gray-500 mb-1">START</label>
+                                    <input v-model="newActivity.startTime" type="time" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none text-sm">
+                                </div>
+                                <div class="w-1/2">
+                                    <label class="block text-xs font-bold text-gray-500 mb-1">END</label>
+                                    <input v-model="newActivity.endTime" type="time" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none text-sm">
+                                </div>
+                            </div>
+                            <input v-model="newActivity.address" type="text" placeholder="Exact Address" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none text-sm">
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 mb-1">
+                                    OPENING HOURS <span class="font-normal text-blue-500 ml-1">(Check for {{ getDayName(activeTrip.startDate, selectedDayIndex) }})</span>
+                                </label>
+                                <input v-model="newActivity.openingHours" type="text" placeholder="e.g. 10:00 - 22:00" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none text-sm">
+                            </div>
+                            <textarea v-model="newActivity.remarks" placeholder="Remarks..." class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none text-sm h-20"></textarea>
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 mb-2">IMAGES</label>
+                                <div class="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                                    <div v-for="(img, idx) in newActivity.images" :key="idx" class="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200 group shrink-0">
+                                        <img :src="img" class="w-full h-full object-cover">
+                                        <button @click="newActivity.images.splice(idx,1)" class="absolute top-0 right-0 bg-red-500 text-white p-0.5 rounded-bl text-xs">×</button>
+                                    </div>
+                                    <button @click="addImagePlaceholder" class="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 bg-gray-50 shrink-0 text-xs font-bold hover:bg-gray-100">+ URL</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button @click="saveActivity" class="w-full mt-8 bg-blue-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-blue-700 transition-colors">
+                            Add to Plan
+                        </button>
+                    </div>
+                </div>
+            </transition>
+
+        </div>
     </div>
 
     <script type="module">
-    // 1. Import Vue and Firebase from CDNs
-    import { createApp, ref, reactive, computed, onMounted, watch } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-    import { getFirestore, collection, addDoc, doc, getDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { createApp, ref, reactive, computed, onMounted, watch, nextTick } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, doc, getDoc, updateDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-    // Firebase configuration
-    const firebaseConfig = {
-    apiKey: "AIzaSyCncLyF2NlitEyz3QJ4qBMQAfAZXAH9GJo",
-    authDomain: "trip-planner-52351.firebaseapp.com",
-    projectId: "trip-planner-52351",
-    storageBucket: "trip-planner-52351.firebasestorage.app",
-    messagingSenderId: "11881619143",
-    appId: "1:11881619143:web:1f69ee5ff1573eab9f68e2",
-    measurementId: "G-Q28K2KS7B1"
-    }
+        // *** PASTE YOUR FIREBASE CONFIG HERE ***
+        const firebaseConfig = {
+            apiKey: "AIzaSyCncLyF2NlitEyz3QJ4qBMQAfAZXAH9GJo",
+            authDomain: "trip-planner-52351.firebaseapp.com",
+            projectId: "trip-planner-52351",
+            storageBucket: "trip-planner-52351.firebasestorage.app",
+            messagingSenderId: "11881619143",
+            appId: "1:11881619143:web:1f69ee5ff1573eab9f68e2",
+            measurementId: "G-Q28K2KS7B1"
+        }
 
-    // Initialize Firebase
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
 
-    createApp({
-        setup() {
-            // State
-            const currentView = ref('dashboard');
-            const activeTab = ref('Schedule');
-            const trips = ref([]); // Now empty, will load from Cloud
-            const activeTrip = ref(null);
-            
-            // Forms
-            const newExpense = reactive({ desc: '', amount: '', payer: '' });
-            const newItem = ref('');
+        const appInstance = createApp({
+            setup() {
+                const currentView = ref('dashboard');
+                const activeTab = ref('Schedule');
+                const selectedDayIndex = ref(0);
+                const trips = ref([]); 
+                const activeTrip = ref(null);
+                
+                const showActivityModal = ref(false);
+                const showCreateTripModal = ref(false);
+                const linkInput = ref('');
+                const isFetching = ref(false);
+                const currentWeather = ref({ temp: 22, condition: 'Sunny' });
+                const exchangeRateText = ref('Loading...');
+                const selectedImage = ref(null);
 
-            // --- COMPUTED PROPERTIES ---
-            const upcomingTripsCount = computed(() => trips.value.length);
-            
-            const totalGlobalBudget = computed(() => {
-                return trips.value.reduce((acc, trip) => {
-                    return acc + (trip.expenses || []).reduce((sum, e) => sum + e.amount, 0);
-                }, 0);
-            });
+                const newExpense = reactive({ desc: '', amount: '' });
+                const newItem = ref('');
+                const newPackingItem = ref('');
+                const newTripData = reactive({ destination: '', startDate: '', endDate: '' });
 
-            const activeTripBudget = computed(() => {
-                if(!activeTrip.value || !activeTrip.value.expenses) return 0;
-                return activeTrip.value.expenses.reduce((sum, e) => sum + e.amount, 0);
-            });
+                const hotelSearchRef = ref(null);
+                const generalSearchRef = ref(null);
+                const tripDestSearchRef = ref(null);
 
-            const splitAmount = computed(() => {
-                if(!activeTrip.value || !activeTrip.value.friends || activeTrip.value.friends.length === 0) return 0;
-                return (activeTripBudget.value / activeTrip.value.friends.length).toFixed(2);
-            });
-
-            // --- DATABASE FUNCTIONS ---
-
-            // 1. Load all trips (Real-time Listener)
-            const loadTrips = () => {
-                // Listens for updates. If a friend changes data, this runs automatically.
-                onSnapshot(collection(db, "trips"), (snapshot) => {
-                    trips.value = snapshot.docs.map(doc => ({
-                        id: doc.id,
-                        ...doc.data()
-                    }));
+                const categories = [
+                    { id: 'flight', label: 'Flight', emoji: '✈️' },
+                    { id: 'transport', label: 'Train', emoji: '🚆' },
+                    { id: 'restaurant', label: 'Food', emoji: '🍔' },
+                    { id: 'shop', label: 'Shop', emoji: '🛍️' },
+                    { id: 'attraction', label: 'Sight', emoji: '📸' },
+                    { id: 'accommodation', label: 'Hotel', emoji: '🏨' },
+                ];
+                
+                const newActivity = reactive({
+                    type: 'restaurant',
+                    title: '',
+                    flightCode: '',
+                    transportType: 'Train',
+                    origin: '',
+                    destination: '',
+                    startTime: '10:00', 
+                    endTime: '12:00',
+                    checkInDate: '',
+                    checkOutDate: '',
+                    address: '',
+                    openingHours: '',
+                    remarks: '',
+                    images: []
                 });
-            };
 
-            // 2. Create a New Trip
-            const createTrip = async () => {
-                const dest = prompt("Where are you going?");
-                if (!dest) return;
+                const openImage = (url) => { selectedImage.value = url; };
 
-                const newTrip = {
-                    destination: dest,
-                    date: 'Upcoming',
-                    image: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?q=80&w=1000&auto=format&fit=crop',
-                    friends: ['You'],
-                    expenses: [],
-                    shoppingList: [],
-                    days: [{ activities: [] }]
+                // *** CURRENCY LOGIC ***
+                const fetchExchangeRate = async (destination) => {
+                    exchangeRateText.value = 'Calculating...';
+                    
+                    const currencyMap = {
+                        'Japan': 'JPY', 'Tokyo': 'JPY', 'Osaka': 'JPY', 'Kyoto': 'JPY', 'Fukuoka': 'JPY',
+                        'USA': 'USD', 'New York': 'USD', 'Los Angeles': 'USD',
+                        'UK': 'GBP', 'London': 'GBP',
+                        'France': 'EUR', 'Paris': 'EUR', 'Europe': 'EUR',
+                        'Korea': 'KRW', 'Seoul': 'KRW',
+                        'Taiwan': 'TWD', 'Taipei': 'TWD',
+                        'Thailand': 'THB', 'Bangkok': 'THB',
+                        'China': 'CNY', 'Shanghai': 'CNY', 'Beijing': 'CNY'
+                    };
+
+                    let targetCurrency = 'USD'; // Default
+                    for (const key in currencyMap) {
+                        if (destination.includes(key)) {
+                            targetCurrency = currencyMap[key];
+                            break;
+                        }
+                    }
+
+                    try {
+                        const res = await fetch(`https://api.exchangerate-api.com/v4/latest/HKD`);
+                        const data = await res.json();
+                        const rate = data.rates[targetCurrency];
+                        
+                        if (rate) {
+                            // *** MODIFIED: Inverse rate calculation (1 JPY = ? HKD) ***
+                            const inverseRate = 1 / rate;
+                            exchangeRateText.value = `1 ${targetCurrency} ≈ ${inverseRate.toFixed(4)} HKD`;
+                        } else {
+                            exchangeRateText.value = `1 ${targetCurrency} ≈ ? HKD`;
+                        }
+                    } catch (e) {
+                        console.error("Currency fetch failed", e);
+                        exchangeRateText.value = "Rate Unavailable";
+                    }
                 };
 
-                // Save to Cloud
-                try {
-                    const docRef = await addDoc(collection(db, "trips"), newTrip);
-                    alert("Trip created! ID: " + docRef.id);
-                } catch (e) {
-                    console.error("Error adding trip: ", e);
-                    alert("Error saving to database. Check your API Keys.");
-                }
-            };
+                // *** FLIGHT TRACKING ***
+                const fetchFlightData = async () => {
+                    const code = newActivity.flightCode.toUpperCase().trim();
+                    if (!code) return alert("Please enter a flight code");
+                    isFetching.value = true;
+                    await new Promise(r => setTimeout(r, 1000));
+                    
+                    const carrier = code.substring(0, 2);
+                    let origin = "HKG"; let dest = "NRT"; let time = "09:00"; let arr = "14:30"; let airline = "Airline";
 
-            // 3. Save Changes (Updates the entire trip object)
-            // In a real app, you'd update specific fields, but this is easier for now.
-            const saveActiveTrip = async () => {
-                if (!activeTrip.value) return;
-                const tripRef = doc(db, "trips", activeTrip.value.id);
-                await updateDoc(tripRef, { ...activeTrip.value });
-            };
+                    if (carrier === "CX") { airline = "Cathay Pacific"; dest = "LHR"; time = "23:00"; arr = "06:00"; }
+                    else if (carrier === "UO") { airline = "HK Express"; origin = "FUK"; dest = "HKG"; time = "20:45"; arr = "23:45"; }
+                    else if (carrier === "JL") { airline = "Japan Airlines"; origin = "HND"; dest = "JFK"; time = "11:00"; arr = "10:00"; }
+                    else if (carrier === "HB") { airline = "Greater Bay Airlines"; origin = "HKG"; dest = "FUK"; time = "03:00"; arr = "07:20"; }
 
-            // 4. Share Feature
-            const shareTrip = () => {
-                if (!activeTrip.value) return;
-                const url = window.location.origin + window.location.pathname + "?trip_id=" + activeTrip.value.id;
-                navigator.clipboard.writeText(url);
-                alert("Link copied! Send this to your friends:\n" + url);
-            };
+                    newActivity.title = `${airline} ${code}`;
+                    newActivity.origin = origin;
+                    newActivity.destination = dest;
+                    newActivity.startTime = time;
+                    newActivity.endTime = arr;
+                    newActivity.transportType = "Flight";
+                    newActivity.remarks = `Scheduled flight ${code} from ${origin} to ${dest}.`;
+                    isFetching.value = false;
+                };
 
-            // --- APP LOGIC ---
+                // *** GOOGLE PLACES ***
+                const initGooglePlaces = async () => {
+                    if (!window.google || !window.google.maps) { setTimeout(initGooglePlaces, 500); return; }
+                    const { PlaceAutocompleteElement } = await google.maps.importLibrary("places");
+                    
+                    // Handler for Activities
+                    const handleActivitySelection = async (event) => {
+                        let place = event.place;
+                        if (!place && event.placePrediction) place = event.placePrediction.toPlace();
+                        else if (event.detail && event.detail.place) place = event.detail.place;
+                        if (!place) return;
 
-            const selectTrip = (trip) => {
-                activeTrip.value = trip;
-                currentView.value = 'details';
-                activeTab.value = 'Schedule';
-                if(trip.friends.length > 0) newExpense.payer = trip.friends[0];
-            };
+                        isFetching.value = true;
+                        try {
+                            await place.fetchFields({ fields: ["displayName", "formattedAddress", "photos", "regularOpeningHours"] });
+                            if (place.displayName) newActivity.title = typeof place.displayName === 'object' ? place.displayName.text : place.displayName;
+                            if (place.formattedAddress) newActivity.address = place.formattedAddress;
+                            if (place.photos && place.photos.length > 0) newActivity.images = place.photos.slice(0, 3).map(photo => photo.getURI({maxWidth: 800, maxHeight: 600}));
+                            if (place.regularOpeningHours && place.regularOpeningHours.weekdayDescriptions && activeTrip.value.startDate) {
+                                const date = new Date(activeTrip.value.startDate);
+                                date.setDate(date.getDate() + selectedDayIndex.value);
+                                let dayIndex = date.getDay() - 1; if(dayIndex === -1) dayIndex = 6;
+                                const text = place.regularOpeningHours.weekdayDescriptions[dayIndex];
+                                if (text) newActivity.openingHours = text.split(': ').slice(1).join(': ');
+                            }
+                        } catch (e) { console.error(e); } finally { isFetching.value = false; }
+                    };
 
-            // Watch for changes in the active trip and auto-save to cloud
-            // This is "Auto-Save" mode
-            watch(activeTrip, (newVal) => {
-                if(newVal) {
-                    // Debounce could be added here to prevent too many writes
-                    saveActiveTrip(); 
-                }
-            }, { deep: true });
+                    // *** UPDATED: ROBUST HANDLER FOR TRIP DESTINATION ***
+                    const handleTripDestSelection = async (event) => {
+                        console.log("Trip Dest Selected", event); // DEBUG
+                        
+                        // Handle all possible event structures
+                        let place = event.place;
+                        // For the new component, if place is null, check for prediction and convert
+                        if (!place && event.placePrediction) {
+                            place = event.placePrediction.toPlace();
+                        } else if (event.detail && event.detail.place) {
+                            place = event.detail.place; // Handle custom event structure
+                        }
 
+                        if (!place) return;
 
-            // Helper: Add Expense
-            const addExpense = () => {
-                if(!newExpense.desc || !newExpense.amount) return;
-                if(!activeTrip.value.expenses) activeTrip.value.expenses = [];
-                
-                activeTrip.value.expenses.push({
-                    desc: newExpense.desc,
-                    amount: parseFloat(newExpense.amount),
-                    payer: newExpense.payer
-                });
-                newExpense.desc = ''; newExpense.amount = '';
-            };
+                        try {
+                            await place.fetchFields({ fields: ["displayName", "photos"] });
+                            
+                            // Extract name properly
+                            if (place.displayName) {
+                                newTripData.destination = typeof place.displayName === 'object' && place.displayName.text 
+                                    ? place.displayName.text 
+                                    : place.displayName;
+                            }
+                            
+                            // Extract photo
+                            if (place.photos && place.photos.length > 0) {
+                                newTripData.image = place.photos[0].getURI({maxWidth: 800, maxHeight: 600});
+                            }
+                        } catch (e) { console.error("Dest fetch error", e); }
+                    };
 
-            const removeExpense = (index) => {
-                activeTrip.value.expenses.splice(index, 1);
-            };
+                    nextTick(() => {
+                        const els = [hotelSearchRef.value, generalSearchRef.value];
+                        els.forEach(el => { 
+                            if(el) { 
+                                el.removeEventListener('gmp-places-select', handleActivitySelection); 
+                                el.removeEventListener('gmp-select', handleActivitySelection);
+                                el.addEventListener('gmp-places-select', handleActivitySelection);
+                                el.addEventListener('gmp-select', handleActivitySelection); 
+                            }
+                        });
+                        /* const actEl = generalSearchRef.value;
+                        if(actEl) {
+                            // Remove old listeners
+                            actEl.removeEventListener('gmp-places-select', handleActivitySelection);
+                            actEl.removeEventListener('gmp-select', handleActivitySelection);
+                            
+                            // Add new listeners (cover both standard and legacy events)
+                            actEl.addEventListener('gmp-places-select', handleActivitySelection);
+                            actEl.addEventListener('gmp-select', handleActivitySelection);
+                        }
+                            */
 
-            // Helper: Shopping List
-            const addItem = () => {
-                if(!newItem.value) return;
-                if(!activeTrip.value.shoppingList) activeTrip.value.shoppingList = [];
-                activeTrip.value.shoppingList.push({ text: newItem.value, checked: false });
-                newItem.value = '';
-            };
-
-            const removeItem = (index) => {
-                activeTrip.value.shoppingList.splice(index, 1);
-            };
-
-            // Helper: Schedule
-            const addActivity = (dayIndex) => {
-                const title = prompt("Activity Title:");
-                if(title) {
-                    activeTrip.value.days[dayIndex].activities.push({
-                        time: '12:00 PM', title: title, location: 'TBD'
+                        const destEl = tripDestSearchRef.value;
+                        if(destEl) {
+                            // Remove old listeners
+                            destEl.removeEventListener('gmp-places-select', handleTripDestSelection);
+                            destEl.removeEventListener('gmp-select', handleTripDestSelection);
+                            
+                            // Add new listeners (cover both standard and legacy events)
+                            destEl.addEventListener('gmp-places-select', handleTripDestSelection);
+                            destEl.addEventListener('gmp-select', handleTripDestSelection);
+                        }
                     });
-                }
-            };
+                };
 
-            const removeActivity = (dayIndex, activityIndex) => {
-                activeTrip.value.days[dayIndex].activities.splice(activityIndex, 1);
-            };
+                watch(showActivityModal, (val) => { if(val) setTimeout(initGooglePlaces, 100); });
+                watch(showCreateTripModal, (val) => { if(val) setTimeout(initGooglePlaces, 100); });
+                watch(() => newActivity.type, () => { if(showActivityModal.value) initGooglePlaces(); });
 
-
-            // --- INITIALIZATION ---
-            onMounted(async () => {
-                loadTrips();
-
-                // Check if user opened a shared link (e.g., ?trip_id=XYZ)
-                const params = new URLSearchParams(window.location.search);
-                const sharedId = params.get('trip_id');
+                // ... (Helpers) ...
+                const deleteTrip = async (tripId) => { if(confirm("Delete this trip?")) { await deleteDoc(doc(db, "trips", tripId)); trips.value = trips.value.filter(t => t.id !== tripId); } };
                 
-                if (sharedId) {
-                    // Wait for trips to load or fetch specific doc
-                    const docRef = doc(db, "trips", sharedId);
-                    const docSnap = await getDoc(docRef);
-                    if (docSnap.exists()) {
-                        activeTrip.value = { id: docSnap.id, ...docSnap.data() };
-                        currentView.value = 'details';
+                const updateTripEndDate = async () => {
+                    if (!activeTrip.value.startDate) return;
+                    const start = new Date(activeTrip.value.startDate);
+                    const daysCount = activeTrip.value.days.length;
+                    const end = new Date(start);
+                    end.setDate(start.getDate() + (daysCount - 1));
+                    activeTrip.value.endDate = end.toISOString().split('T')[0];
+                    if(activeTrip.value.id !== 'local') await updateDoc(doc(db, "trips", activeTrip.value.id), { days: activeTrip.value.days, endDate: activeTrip.value.endDate });
+                };
+
+                const removeDay = async (dayIndex) => { if(confirm(`Remove Day ${dayIndex + 1}?`)) { activeTrip.value.days.splice(dayIndex, 1); if(selectedDayIndex.value >= activeTrip.value.days.length) selectedDayIndex.value = Math.max(0, activeTrip.value.days.length - 1); await updateTripEndDate(); } };
+                const addDay = async () => { activeTrip.value.days.push({ activities: [] }); await updateTripEndDate(); };
+
+                const formatDateRange = (start, end) => { if (!start || !end) return 'Upcoming'; const d1 = new Date(start); const d2 = new Date(end); return `${d1.toLocaleDateString('en-US', {month:'short', day:'numeric'})} - ${d2.toLocaleDateString('en-US', {month:'short', day:'numeric'})}`; };
+                const getDayDate = (startDate, index) => { if (!startDate) return index + 1; const date = new Date(startDate); date.setDate(date.getDate() + index); return date.getDate(); };
+                const getDayName = (startDate, index) => { if (!startDate) return 'Today'; const date = new Date(startDate); date.setDate(date.getDate() + index); return date.toLocaleDateString('en-US', { weekday: 'long' }); };
+                const calculateNights = (inDate, outDate) => { if(!inDate || !outDate) return 0; const d1 = new Date(inDate); const d2 = new Date(outDate); const diff = Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24)); return diff > 0 ? diff : 0; };
+                
+                const openCreateTripModal = () => { Object.assign(newTripData, { destination: '', startDate: '', endDate: '', image: '' }); showCreateTripModal.value = true; };
+                
+                const saveNewTrip = async () => { 
+                    if (!newTripData.destination || !newTripData.startDate || !newTripData.endDate) return alert("Fill all fields"); 
+                    const start = new Date(newTripData.startDate); 
+                    const end = new Date(newTripData.endDate); 
+                    const diffDays = Math.ceil(Math.abs(end - start) / (1000 * 60 * 60 * 24)) + 1; 
+                    
+                    const newTrip = { 
+                        ...newTripData, 
+                        image: newTripData.image || 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?q=80&w=1000', 
+                        friends: ['You'], 
+                        expenses: [], 
+                        shoppingList: [], 
+                        packingList: [], 
+                        days: Array.from({ length: diffDays || 1 }, () => ({ activities: [] })) 
+                    }; 
+                    await addDoc(collection(db, "trips"), newTrip); 
+                    showCreateTripModal.value = false; 
+                };
+
+                const openActivityModal = () => { Object.assign(newActivity, { title: '', address: '', flightCode:'', transportType:'Train', origin:'', destination:'', startTime: '10:00', endTime: '12:00', checkInDate:'', checkOutDate:'', openingHours:'', remarks:'', images: [], type: 'restaurant' }); linkInput.value = ''; showActivityModal.value = true; };
+                const saveActivity = async () => {
+                    let activityToSave = { ...newActivity, isEditing: false, images: [...newActivity.images] };
+                    if(newActivity.type === 'flight') { if(!newActivity.flightCode) return alert("Enter flight code"); activityToSave.title = newActivity.title || `Flight ${newActivity.flightCode.toUpperCase()}`; activityToSave.address = "Airport"; } 
+                    else if (newActivity.type === 'transport') { if(!newActivity.origin || !newActivity.destination) return alert("Enter origin/dest"); activityToSave.title = `${newActivity.transportType}: ${newActivity.origin} ➝ ${newActivity.destination}`; }
+                    else if (newActivity.type === 'accommodation') { if(!newActivity.title) return alert("Enter Hotel Name"); } 
+                    else { if(!newActivity.title) return alert("Enter title"); }
+                    if(!activeTrip.value.days[selectedDayIndex.value]) activeTrip.value.days[selectedDayIndex.value] = { activities: [] };
+                    activeTrip.value.days[selectedDayIndex.value].activities.push(activityToSave);
+                    sortActivities(selectedDayIndex.value);
+                    if(activeTrip.value.id !== 'local') await updateDoc(doc(db, "trips", activeTrip.value.id), { ...activeTrip.value });
+                    showActivityModal.value = false;
+                };
+                const calculateDurationSimple = (start, end) => { if(!start || !end) return ''; const [h1, m1] = start.split(':').map(Number); const [h2, m2] = end.split(':').map(Number); let diff = (h2 * 60 + m2) - (h1 * 60 + m1); if (diff < 0) diff += 24 * 60; const h = Math.floor(diff / 60); const m = diff % 60; return h > 0 ? `${h}h ${m}m` : `${m}m`; };
+                const sortActivities = (dayIndex) => { if(activeTrip.value.days[dayIndex]) activeTrip.value.days[dayIndex].activities.sort((a,b) => a.startTime.localeCompare(b.startTime)); };
+                const saveQuickEdit = async (dayIndex) => { sortActivities(dayIndex); activeTrip.value.days[dayIndex].activities.forEach(a => a.isEditing = false); if(activeTrip.value.id !== 'local') await updateDoc(doc(db, "trips", activeTrip.value.id), { ...activeTrip.value }); };
+                const getCategoryColor = (type) => ({ flight: 'bg-blue-500', transport: 'bg-indigo-500', restaurant: 'bg-orange-500', shop: 'bg-purple-500', attraction: 'bg-teal-500', accommodation: 'bg-pink-500' }[type] || 'bg-gray-400');
+                const getCategoryIcon = (type) => ({ flight: '✈️', transport: '🚆', restaurant: '🍔', shop: '🛍️', attraction: '📸', accommodation: '🏨' }[type] || '📍');
+                const removeActivity = async (dayIndex, actIndex) => { activeTrip.value.days[dayIndex].activities.splice(actIndex, 1); if(activeTrip.value.id !== 'local') await updateDoc(doc(db, "trips", activeTrip.value.id), { days: activeTrip.value.days }); };
+                
+                const selectTrip = (trip) => { 
+                    activeTrip.value = trip; 
+                    currentView.value = 'details'; 
+                    selectedDayIndex.value = 0; 
+                    sortActivities(0); 
+                    updateWeather(trip.destination);
+                    fetchExchangeRate(trip.destination); 
+                };
+
+                const getTripBudget = (trip) => (trip.expenses || []).reduce((sum, e) => sum + e.amount, 0);
+                const activeTripBudget = computed(() => activeTrip.value?.expenses?.reduce((sum, e) => sum + e.amount, 0) || 0);
+                const splitAmount = computed(() => (activeTripBudget.value / (activeTrip.value?.friends?.length || 1)).toFixed(2));
+                const addExpense = async () => { if(newExpense.desc && newExpense.amount) { if(!activeTrip.value.expenses) activeTrip.value.expenses=[]; activeTrip.value.expenses.push({ ...newExpense }); if(activeTrip.value.id !== 'local') await updateDoc(doc(db, "trips", activeTrip.value.id), { expenses: activeTrip.value.expenses }); newExpense.desc = ''; newExpense.amount = ''; }};
+                const removeExpense = async (i) => { activeTrip.value.expenses.splice(i, 1); if(activeTrip.value.id !== 'local') await updateDoc(doc(db, "trips", activeTrip.value.id), { expenses: activeTrip.value.expenses }); };
+                const addItem = async () => { if(newItem.value) { if(!activeTrip.value.shoppingList) activeTrip.value.shoppingList=[]; activeTrip.value.shoppingList.push({ text: newItem.value, checked: false }); if(activeTrip.value.id !== 'local') await updateDoc(doc(db, "trips", activeTrip.value.id), { shoppingList: activeTrip.value.shoppingList }); newItem.value = ''; }};
+                const removeItem = async (i) => { activeTrip.value.shoppingList.splice(i, 1); if(activeTrip.value.id !== 'local') await updateDoc(doc(db, "trips", activeTrip.value.id), { shoppingList: activeTrip.value.shoppingList }); };
+                
+                const addPackingItem = async () => {
+                    if(newPackingItem.value) {
+                        if(!activeTrip.value.packingList) activeTrip.value.packingList = [];
+                        activeTrip.value.packingList.push({ text: newPackingItem.value, checked: false });
+                        if(activeTrip.value.id !== 'local') await updateDoc(doc(db, "trips", activeTrip.value.id), { packingList: activeTrip.value.packingList });
+                        newPackingItem.value = '';
                     }
-                }
-            });
+                };
+                const savePackingList = async () => { if(activeTrip.value.id !== 'local') await updateDoc(doc(db, "trips", activeTrip.value.id), { packingList: activeTrip.value.packingList }); };
+                const removePackingItem = async (i) => { activeTrip.value.packingList.splice(i, 1); if(activeTrip.value.id !== 'local') await updateDoc(doc(db, "trips", activeTrip.value.id), { packingList: activeTrip.value.packingList }); };
 
-            return {
-                currentView, activeTab, trips, activeTrip,
-                newExpense, newItem,
-                upcomingTripsCount, totalGlobalBudget, activeTripBudget, splitAmount,
-                selectTrip, createTrip, shareTrip,
-                addExpense, removeExpense, addItem, removeItem, addActivity, removeActivity
-            };
-        }
-    }).mount('#app');
-</script>
+                const shareTrip = () => navigator.clipboard.writeText(window.location.origin + window.location.pathname + "?trip_id=" + activeTrip.value.id).then(()=>alert("Link Copied!"));
+                const addImagePlaceholder = () => { const url = prompt("Enter Image URL"); if(url) newActivity.images.push(url); };
+                const updateWeather = (destination) => { const conditions = ['Sunny', 'Cloudy', 'Rainy', 'Clear']; currentWeather.value = { temp: 15 + (destination.length * 2) % 15, condition: conditions[destination.length % 4] }; };
 
+                onMounted(async () => {
+                    onSnapshot(collection(db, "trips"), (snapshot) => { trips.value = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); });
+                    const sharedId = new URLSearchParams(window.location.search).get('trip_id');
+                    if (sharedId) {
+                        const docSnap = await getDoc(doc(db, "trips", sharedId));
+                        if (docSnap.exists()) { activeTrip.value = { id: docSnap.id, ...docSnap.data() }; currentView.value = 'details'; sortActivities(0); updateWeather(activeTrip.value.destination); fetchExchangeRate(activeTrip.value.destination); }
+                    }
+                });
+
+                return {
+                    currentView, activeTab, selectedDayIndex, trips, activeTrip, showActivityModal, showCreateTripModal, linkInput, isFetching, currentWeather, exchangeRateText,
+                    newActivity, categories, newExpense, newItem, newPackingItem, newTripData, activeTripBudget, splitAmount, selectedImage, openImage,
+                    getCategoryColor, getCategoryIcon, openActivityModal, openCreateTripModal, saveNewTrip, saveActivity, removeActivity, addDay, selectTrip, getTripBudget,
+                    addExpense, removeExpense, addItem, removeItem, shareTrip, calculateDurationSimple, saveQuickEdit, formatDateRange, getDayDate,
+                    deleteTrip, addImagePlaceholder, removeDay, calculateNights, getDayName, addPackingItem, removePackingItem, savePackingList,
+                    hotelSearchRef, generalSearchRef, tripDestSearchRef, fetchFlightData
+                };
+            }
+        });
+
+        appInstance.config.compilerOptions.isCustomElement = (tag) => tag.startsWith('gmp-');
+        appInstance.mount('#app');
+    </script>
 </body>
 </html>
-
-
-  
